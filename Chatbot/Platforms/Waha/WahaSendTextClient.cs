@@ -18,10 +18,8 @@ public sealed class WahaSendTextClient(HttpClient httpClient, IOptions<WahaOptio
             text
         };
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sendText")
-        {
-            Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json")
-        };
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/sendText");
+        request.Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json");
 
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 

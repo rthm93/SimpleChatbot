@@ -1,14 +1,9 @@
-using Chatbot.Components;
 using Chatbot.Application;
 using Chatbot.Application.Workflow;
 using Chatbot.Infrastructure.InMemory;
 using Chatbot.Platforms.Waha;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
 
 builder.Services.Configure<WahaOptions>(options =>
 {
@@ -55,14 +50,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 
-app.UseAntiforgery();
-
-app.MapStaticAssets();
 app.MapWahaWebhookEndpoints();
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
 
 app.Run();
 
