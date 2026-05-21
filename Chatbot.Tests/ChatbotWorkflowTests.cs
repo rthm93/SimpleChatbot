@@ -16,10 +16,12 @@ namespace Chatbot.Tests;
 
 public sealed class ChatbotWorkflowTests
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [Fact]
     public void Adapter_normalizes_waha_message_payload()
     {
-        var payload = JsonSerializer.Deserialize<JsonElement>("""
+        var payload = DeserializeWahaRequest("""
             {
               "event": "message",
               "session": "default",
@@ -47,6 +49,70 @@ public sealed class ChatbotWorkflowTests
     }
 
     [Fact]
+    public void Adapter_normalizes_webjs_lid_message_payload()
+    {
+        var payload = DeserializeWahaRequest("""
+            {
+              "id": "evt_01ks58zy3z1wd66mx8rm3ftjsk",
+              "timestamp": 1779367409792,
+              "event": "message",
+              "session": "default",
+              "metadata": {},
+              "me": {
+                "id": "60103342717@c.us",
+                "pushName": "Pc Buddies Solutions"
+              },
+              "payload": {
+                "id": "false_217398577729537@lid_AC1F362892453566E3C6CD94265B0D77",
+                "timestamp": 1779367409,
+                "from": "217398577729537@lid",
+                "fromMe": false,
+                "source": "app",
+                "to": "60103342717@c.us",
+                "body": "Gi",
+                "hasMedia": false,
+                "media": null,
+                "ack": 1,
+                "ackName": "SERVER",
+                "location": null,
+                "vCards": [],
+                "_data": {
+                  "id": {
+                    "fromMe": false,
+                    "remote": "217398577729537@lid",
+                    "id": "AC1F362892453566E3C6CD94265B0D77",
+                    "_serialized": "false_217398577729537@lid_AC1F362892453566E3C6CD94265B0D77"
+                  },
+                  "viewed": false,
+                  "body": "Gi",
+                  "type": "chat",
+                  "from": "217398577729537@lid",
+                  "to": "60103342717@c.us",
+                  "mentionedJidList": [],
+                  "links": []
+                }
+              },
+              "engine": "WEBJS",
+              "environment": {
+                "version": "2026.4.2",
+                "engine": "WEBJS",
+                "tier": "CORE"
+              }
+            }
+            """);
+
+        var ok = new WahaWebhookAdapter().TryNormalize(payload, out var message);
+
+        Assert.True(ok);
+        Assert.NotNull(message);
+        Assert.Equal(new ConversationKey(Platform.Waha, "217398577729537@lid"), message.Conversation);
+        Assert.Equal(MessageDirection.CustomerToBot, message.Direction);
+        Assert.Equal("Gi", message.Text);
+        Assert.Equal("false_217398577729537@lid_AC1F362892453566E3C6CD94265B0D77", message.ExternalMessageId);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1779367409), message.Timestamp);
+    }
+
+    [Fact]
     public async Task Endpoints_accept_without_auth_and_reject_malformed_payload()
     {
         await using var app = new ChatbotApplication();
@@ -54,9 +120,11 @@ public sealed class ChatbotWorkflowTests
 
         var accepted = await client.PostAsJsonAsync("/api/waha/message", WahaMessage("hello"));
         var malformed = await client.PostAsJsonAsync("/api/waha/message", new { payload = new { body = "hello" } });
+        var malformedAny = await client.PostAsJsonAsync("/api/waha/message-any", new { payload = new { body = "hello" } });
 
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, malformedAny.StatusCode);
     }
 
     [Fact]
@@ -198,6 +266,20 @@ public sealed class ChatbotWorkflowTests
     }
 
     [Fact]
+    public async Task Message_any_known_from_me_object_id_does_not_trigger_manual_takeover()
+    {
+        await using var app = new ChatbotApplication();
+        var client = app.CreateClient();
+
+        await app.AppMessages.RecordSentMessageIdAsync(Customer, "known-id", CancellationToken.None);
+        await client.PostAsJsonAsync(
+            "/api/waha/message-any",
+            WahaMessage("app reply", fromMe: true, id: new { _serialized = "known-id", id = "inner-id" }));
+
+        Assert.Null(await app.ConversationStates.GetAsync(Customer, CancellationToken.None));
+    }
+
+    [Fact]
     public void Invalid_environment_values_use_defaults()
     {
         var previousRetry = Environment.GetEnvironmentVariable("WAHA_SEND_RETRY_COUNT");
@@ -226,7 +308,10 @@ public sealed class ChatbotWorkflowTests
 
     private static readonly ConversationKey Customer = new(Platform.Waha, "111@c.us");
 
-    private static object WahaMessage(string text, bool fromMe = false, string? id = null, long timestamp = 1667561485) =>
+    private static WahaWebhookRequest DeserializeWahaRequest(string json) =>
+        JsonSerializer.Deserialize<WahaWebhookRequest>(json, JsonOptions) ?? throw new InvalidOperationException("Expected a WAHA request.");
+
+    private static object WahaMessage(string text, bool fromMe = false, object? id = null, long timestamp = 1667561485) =>
         new
         {
             eventName = "message",

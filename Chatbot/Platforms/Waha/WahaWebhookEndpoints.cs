@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Chatbot.Platforms.Waha;
@@ -12,30 +11,32 @@ public static class WahaWebhookEndpoints
         return endpoints;
     }
 
-    private static async Task<Results<Ok, BadRequest>> HandleMessageAsync(
-        JsonElement payload,
+    private const string MalformedPayloadMessage = "Malformed WAHA webhook payload.";
+
+    private static async Task<Results<Ok, BadRequest<string>>> HandleMessageAsync(
+        WahaWebhookRequest request,
         WahaWebhookAdapter adapter,
         WahaWebhookMessageProcessor processor,
         CancellationToken cancellationToken)
     {
-        if (!adapter.TryNormalize(payload, out var message) || message is null)
+        if (!adapter.TryNormalize(request, out var message) || message is null)
         {
-            return TypedResults.BadRequest();
+            return TypedResults.BadRequest(MalformedPayloadMessage);
         }
 
         await processor.ProcessMessageAsync(message, cancellationToken);
         return TypedResults.Ok();
     }
 
-    private static async Task<Results<Ok, BadRequest>> HandleMessageAnyAsync(
-        JsonElement payload,
+    private static async Task<Results<Ok, BadRequest<string>>> HandleMessageAnyAsync(
+        WahaWebhookRequest request,
         WahaWebhookAdapter adapter,
         WahaWebhookMessageProcessor processor,
         CancellationToken cancellationToken)
     {
-        if (!adapter.TryNormalize(payload, out var message) || message is null)
+        if (!adapter.TryNormalize(request, out var message) || message is null)
         {
-            return TypedResults.BadRequest();
+            return TypedResults.BadRequest(MalformedPayloadMessage);
         }
 
         await processor.ProcessAnyMessageAsync(message, cancellationToken);

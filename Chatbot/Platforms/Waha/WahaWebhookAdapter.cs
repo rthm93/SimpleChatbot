@@ -6,78 +6,97 @@ namespace Chatbot.Platforms.Waha;
 
 public sealed class WahaWebhookAdapter
 {
-    public bool TryNormalize(JsonElement source, out NormalizedMessage? message)
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public bool TryNormalize(WahaWebhookRequest source, out NormalizedMessage? message)
     {
         message = null;
 
-        var payload = source.TryGetProperty("payload", out var payloadElement)
-            && payloadElement.ValueKind == JsonValueKind.Object
-                ? payloadElement
-                : source;
-
-        if (!TryGetBoolean(payload, "fromMe", out var fromMe)
-            || !TryGetTimestamp(payload, "timestamp", out var timestamp)
-            || !TryGetString(payload, "body", out var text))
+        var payload = source.Payload;
+        if (payload is null
+            || payload.FromMe is not { } fromMe
+            || !TryGetTimestamp(payload.Timestamp, out var timestamp)
+            || !TryGetString(payload.Body, out var text))
         {
             return false;
         }
 
         var contactId = fromMe
-            ? TryGetString(payload, "to", out var to) ? to : null
-            : TryGetString(payload, "from", out var from) ? from : null;
+            ? FirstNonEmpty(payload.To, payload.Data?.To, payload.Data?.Id?.Remote)
+            : FirstNonEmpty(payload.From, payload.Data?.From, payload.Data?.Id?.Remote);
 
         if (string.IsNullOrWhiteSpace(contactId))
         {
             return false;
         }
 
-        TryGetString(payload, "id", out var id);
+        var id = FirstNonEmpty(ReadString(payload.Id), payload.Data?.Id?.Serialized, payload.Data?.Id?.Id);
         message = new NormalizedMessage(
             new ConversationKey(Platform.Waha, contactId),
             fromMe ? MessageDirection.BotToCustomer : MessageDirection.CustomerToBot,
             text,
             timestamp,
             id,
-            source.Clone());
+            JsonSerializer.SerializeToElement(source, JsonOptions));
         return true;
     }
 
-    private static bool TryGetString(JsonElement element, string propertyName, out string value)
+    private static bool TryGetString(string? source, out string value)
     {
-        value = string.Empty;
-
-        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        value = property.GetString() ?? string.Empty;
+        value = source ?? string.Empty;
         return !string.IsNullOrWhiteSpace(value);
     }
 
-    private static bool TryGetBoolean(JsonElement element, string propertyName, out bool value)
+    private static string? FirstNonEmpty(params string?[] values)
     {
-        value = false;
-
-        if (!element.TryGetProperty(propertyName, out var property))
+        foreach (var value in values)
         {
-            return false;
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
         }
 
-        if (property.ValueKind == JsonValueKind.True || property.ValueKind == JsonValueKind.False)
-        {
-            value = property.GetBoolean();
-            return true;
-        }
-
-        return false;
+        return null;
     }
 
-    private static bool TryGetTimestamp(JsonElement element, string propertyName, out DateTimeOffset value)
+    private static string? ReadString(JsonElement? source)
+    {
+        if (source is not { } element)
+        {
+            return null;
+        }
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            return element.GetString();
+        }
+
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        if (element.TryGetProperty("_serialized", out var serialized)
+            && serialized.ValueKind == JsonValueKind.String)
+        {
+            return serialized.GetString();
+        }
+
+        if (element.TryGetProperty("id", out var id)
+            && id.ValueKind == JsonValueKind.String)
+        {
+            return id.GetString();
+        }
+
+        return null;
+    }
+
+    private static bool TryGetTimestamp(JsonElement? source, out DateTimeOffset value)
     {
         value = default;
 
-        if (!element.TryGetProperty(propertyName, out var property))
+        if (source is not { } property)
         {
             return false;
         }
