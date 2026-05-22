@@ -151,8 +151,8 @@ public sealed class ChatbotWorkflowTests
         await client.PostAsJsonAsync("/api/waha/message", WahaMessage("2"));
         await client.PostAsJsonAsync("/api/waha/message", WahaMessage("bad"));
 
-        Assert.Contains("Sorry make appointment feature is not available yet", app.Outbound.Messages);
-        Assert.Contains("Sorry enquiry feature is not available yet", app.Outbound.Messages);
+        Assert.Contains("Make appointment is still backstage learning its lines. Please check back soon.", app.Outbound.Messages);
+        Assert.Contains("Enquiry is still backstage learning its lines. Please check back soon.", app.Outbound.Messages);
         Assert.Equal(MvpWorkflowDefinitionProvider.MenuPrompt, app.Outbound.Messages.Last());
     }
 

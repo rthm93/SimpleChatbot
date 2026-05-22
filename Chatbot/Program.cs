@@ -18,11 +18,20 @@ builder.Services.Configure<WorkflowOptions>(options =>
     options.WorkflowTimeoutMinutes = ReadPositiveInt("WORKFLOW_TIMEOUT_MINUTES", 10);
     options.HumanTookOverTimeoutMinutes = ReadPositiveInt("HUMAN_TOOK_OVER_TIMEOUT_MINUTES", 30);
 });
+builder.Services.Configure<GeminiOptions>(options =>
+{
+    options.ApiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY")
+        ?? Environment.GetEnvironmentVariable("GOOGLE_API_KEY");
+    options.Model = Environment.GetEnvironmentVariable("GEMINI_MODEL") is { Length: > 0 } model
+        ? model
+        : "gemini-2.0-flash";
+});
 
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IConversationStateStore, InMemoryConversationStateStore>();
 builder.Services.AddSingleton<IWorkflowStateStore, InMemoryWorkflowStateStore>();
 builder.Services.AddSingleton<IConversationLockProvider, InMemoryConversationLockProvider>();
+builder.Services.AddSingleton<IFeatureUnavailableMessageGenerator, GeminiFeatureUnavailableMessageGenerator>();
 builder.Services.AddSingleton<IWorkflowDefinitionProvider, MvpWorkflowDefinitionProvider>();
 builder.Services.AddSingleton<IWahaAppMessageStore, InMemoryWahaAppMessageStore>();
 builder.Services.AddScoped<WorkflowEngine>();

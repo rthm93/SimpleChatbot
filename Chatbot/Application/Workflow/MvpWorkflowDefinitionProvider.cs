@@ -2,7 +2,8 @@ using Chatbot.Domain;
 
 namespace Chatbot.Application.Workflow;
 
-public sealed class MvpWorkflowDefinitionProvider : IWorkflowDefinitionProvider
+public sealed class MvpWorkflowDefinitionProvider(
+    IFeatureUnavailableMessageGenerator featureUnavailableMessageGenerator) : IWorkflowDefinitionProvider
 {
     public const string MenuPrompt = """
         Hi, how can I help you?
@@ -10,29 +11,30 @@ public sealed class MvpWorkflowDefinitionProvider : IWorkflowDefinitionProvider
         2. Enquiry
         """;
 
-    private static readonly WorkflowDefinition Definition = new(
+    private readonly WorkflowDefinition _definition = new(
         "mvp",
         MenuBlock.BlockId,
-        [new MenuBlock()]);
+        [new MenuBlock(featureUnavailableMessageGenerator)]);
 
-    public WorkflowDefinition GetLatest() => Definition;
+    public WorkflowDefinition GetLatest() => _definition;
 
-    private sealed class MenuBlock : IWorkflowBlock
+    private sealed class MenuBlock(
+        IFeatureUnavailableMessageGenerator featureUnavailableMessageGenerator) : IWorkflowBlock
     {
         public const string BlockId = "menu";
 
         public string Id => BlockId;
 
-        public Task<WorkflowBlockResult> HandleAsync(NormalizedMessage message, CancellationToken cancellationToken)
+        public async Task<WorkflowBlockResult> HandleAsync(NormalizedMessage message, CancellationToken cancellationToken)
         {
             var reply = message.Text.Trim() switch
             {
-                "1" => "Sorry make appointment feature is not available yet",
-                "2" => "Sorry enquiry feature is not available yet",
+                "1" => await featureUnavailableMessageGenerator.GenerateAsync("Make appointment", cancellationToken),
+                "2" => await featureUnavailableMessageGenerator.GenerateAsync("Enquiry", cancellationToken),
                 _ => MenuPrompt
             };
 
-            return Task.FromResult(new WorkflowBlockResult(reply, BlockId));
+            return new WorkflowBlockResult(reply, BlockId);
         }
     }
 }
